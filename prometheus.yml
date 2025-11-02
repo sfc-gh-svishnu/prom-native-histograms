@@ -1,0 +1,21 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'native-histogram-monitor'
+
+scrape_configs:
+  - job_name: 'native-histogram-app'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['host.docker.internal:8080']
+        labels:
+          instance: 'native-histogram-demo'
+          environment: 'development'
+    # Enable native histogram support
+    scrape_protocols:
+      - PrometheusProto
+      - OpenMetricsText1.0.0
+      - OpenMetricsText0.0.1
+      - PrometheusText0.0.4
+
