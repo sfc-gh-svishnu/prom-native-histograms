@@ -10,7 +10,9 @@ Native histograms are a new feature in Prometheus that provides more efficient a
 
 ```
 .
-├── main.go                          # Application entry point
+├── cmd/                             # Application entry points
+│   └── prom-native-histograms/      # Main application
+│       └── main.go                  # Application entry point
 ├── internal/                        # Private application packages
 │   ├── config/                      # Configuration management
 │   │   └── config.go
@@ -29,11 +31,13 @@ Native histograms are a new feature in Prometheus that provides more efficient a
 
 ### Package Overview
 
-- **`main.go`**: Entry point that wires up all components and starts the HTTP server with graceful shutdown
+- **`cmd/prom-native-histograms/main.go`**: Entry point that wires up all components and starts the HTTP server with graceful shutdown
 - **`internal/config`**: Centralized configuration with sensible defaults
 - **`internal/metrics`**: Prometheus metrics definitions and registration
 - **`internal/handlers`**: HTTP handlers for API, health check, and info endpoints
 - **`internal/worker`**: Background workers for continuous metrics generation
+
+This structure follows the [golang-standards/project-layout](https://github.com/golang-standards/project-layout) convention, making it easy to add multiple binaries if needed in the future.
 
 ## Prerequisites
 
@@ -51,7 +55,7 @@ go mod download
 ### 2. Run the Go Application
 
 ```bash
-go run main.go
+go run cmd/prom-native-histograms/main.go
 ```
 
 The application will start on port 8080 and expose the following endpoints:
@@ -192,8 +196,15 @@ curl -s http://localhost:9090/api/v1/targets | python3 -m json.tool
 ### Build a Binary
 
 ```bash
-go build -o prom-native-histograms .
+go build -o prom-native-histograms ./cmd/prom-native-histograms
 ./prom-native-histograms
+```
+
+Or install it globally:
+
+```bash
+go install ./cmd/prom-native-histograms
+prom-native-histograms
 ```
 
 ### Build with Docker
@@ -206,7 +217,7 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN go build -o prom-native-histograms .
+RUN go build -o prom-native-histograms ./cmd/prom-native-histograms
 
 FROM alpine:latest
 RUN apk --no-cache add ca-certificates
