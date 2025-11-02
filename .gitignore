@@ -4,6 +4,7 @@
 *.dll
 *.so
 *.dylib
+prom-native-histograms
 
 # Test binary, built with `go test -c`
 *.test
@@ -19,6 +20,10 @@ vendor/
 
 # Prometheus data
 prometheus-data/
+
+# Application logs
+app.log
+*.log
 
 # IDE specific files
 .idea/

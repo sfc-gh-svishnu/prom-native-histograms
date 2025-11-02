@@ -1,125 +1,81 @@
 package main
 
 import (
+	"context"
 	"log"
-	"math/rand"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/svishnu/prom-native-histograms/internal/config"
+	"github.com/svishnu/prom-native-histograms/internal/handlers"
+	"github.com/svishnu/prom-native-histograms/internal/metrics"
+	"github.com/svishnu/prom-native-histograms/internal/worker"
 )
-
-var (
-	// Create a native histogram with custom buckets
-	// NativeHistogramBucketFactor controls the resolution of the histogram
-	requestDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
-		Name:                            "http_request_duration_seconds",
-		Help:                            "Duration of HTTP requests in seconds (native histogram)",
-		NativeHistogramBucketFactor:     1.1,       // Native histogram bucket growth factor
-		NativeHistogramMaxBucketNumber:  100,       // Maximum number of buckets
-		NativeHistogramMinResetDuration: time.Hour, // Minimum time between histogram resets
-	})
-
-	// Another native histogram for response sizes
-	responseSize = prometheus.NewHistogram(prometheus.HistogramOpts{
-		Name:                           "http_response_size_bytes",
-		Help:                           "Size of HTTP responses in bytes (native histogram)",
-		NativeHistogramBucketFactor:    1.1,
-		NativeHistogramMaxBucketNumber: 100,
-	})
-
-	// A counter for total requests
-	totalRequests = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "http_requests_total",
-			Help: "Total number of HTTP requests",
-		},
-		[]string{"endpoint"},
-	)
-)
-
-func init() {
-	// Register metrics with Prometheus
-	prometheus.MustRegister(requestDuration)
-	prometheus.MustRegister(responseSize)
-	prometheus.MustRegister(totalRequests)
-}
-
-// Handler that simulates some work and records metrics
-func apiHandler(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-
-	// Increment request counter
-	totalRequests.WithLabelValues("/api").Inc()
-
-	// Simulate some work with random duration (10ms to 500ms)
-	sleepDuration := time.Duration(10+rand.Intn(490)) * time.Millisecond
-	time.Sleep(sleepDuration)
-
-	// Record request duration
-	duration := time.Since(start).Seconds()
-	requestDuration.Observe(duration)
-
-	// Simulate response size (1KB to 100KB)
-	size := float64(1024 + rand.Intn(99*1024))
-	responseSize.Observe(size)
-
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("OK"))
-}
-
-// Background worker to generate some continuous metrics
-func generateMetrics() {
-	ticker := time.NewTicker(1 * time.Second)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		// Simulate background operations with varying durations
-		duration := float64(rand.Intn(1000)) / 1000.0 // 0 to 1 second
-		requestDuration.Observe(duration)
-
-		// Simulate varying response sizes
-		size := float64(rand.Intn(50000))
-		responseSize.Observe(size)
-	}
-}
 
 func main() {
+	// Initialize configuration
+	cfg := config.NewConfig()
+
+	// Initialize metrics
+	m := metrics.NewMetrics()
+
+	// Initialize handlers
+	h := handlers.NewHandler(m, cfg)
+
 	// Start background metrics generator
-	go generateMetrics()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	// Set up HTTP handlers
-	http.HandleFunc("/api", apiHandler)
-	http.Handle("/metrics", promhttp.Handler())
+	generator := worker.NewMetricsGenerator(m, cfg)
+	go generator.Start(ctx)
 
-	// Health check endpoint
-	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("healthy"))
-	})
+	// Set up HTTP routes
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", h.RootHandler)
+	mux.HandleFunc("/api", h.APIHandler)
+	mux.HandleFunc("/health", h.HealthHandler)
+	mux.Handle("/metrics", promhttp.Handler())
 
-	// Root endpoint with info
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`Prometheus Native Histogram Demo
-		
-Endpoints:
-- /api - Sample API endpoint that generates metrics
-- /metrics - Prometheus metrics endpoint
-- /health - Health check endpoint
-
-Native histograms are enabled for:
-- http_request_duration_seconds
-- http_response_size_bytes
-`))
-	})
-
-	log.Println("Starting server on :8080")
-	log.Println("Metrics available at http://localhost:8080/metrics")
-	log.Println("API endpoint at http://localhost:8080/api")
-
-	if err := http.ListenAndServe(":8080", nil); err != nil {
-		log.Fatal(err)
+	// Create HTTP server
+	server := &http.Server{
+		Addr:         cfg.ServerAddress,
+		Handler:      mux,
+		ReadTimeout:  cfg.ReadTimeout,
+		WriteTimeout: cfg.WriteTimeout,
 	}
+
+	// Start server in a goroutine
+	go func() {
+		log.Printf("Starting server on %s", cfg.ServerAddress)
+		log.Printf("Metrics available at http://localhost%s/metrics", cfg.ServerAddress)
+		log.Printf("API endpoint at http://localhost%s/api", cfg.ServerAddress)
+
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Server failed to start: %v", err)
+		}
+	}()
+
+	// Wait for interrupt signal to gracefully shutdown the server
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	log.Println("Shutting down server...")
+
+	// Cancel context to stop background workers
+	cancel()
+
+	// Gracefully shutdown the server with a timeout
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
+
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		log.Printf("Server forced to shutdown: %v", err)
+	}
+
+	log.Println("Server stopped")
 }
