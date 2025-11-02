@@ -25,6 +25,9 @@ prometheus-data/
 app.log
 *.log
 
+# Playwright MCP temporary files
+.playwright-mcp/
+
 # IDE specific files
 .idea/
 .vscode/

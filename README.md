@@ -6,6 +6,34 @@ This project demonstrates how to use Prometheus native histograms in a Go applic
 
 Native histograms are a new feature in Prometheus that provides more efficient and accurate histogram representation compared to classic histograms. They use a dynamic bucket system that adapts to the data distribution, reducing storage requirements and improving query performance.
 
+## Visual Demonstration
+
+See native histograms in action with Prometheus queries:
+
+### Native Histogram Count Over Time
+
+![Histogram Count Graph](assets/screenshots/histogram-count-graph.png)
+
+*Query: `http_request_duration_seconds` - Shows the count of requests growing over time with native histogram buckets*
+
+### 95th Percentile Latency
+
+![95th Percentile](assets/screenshots/histogram-quantile-95.png)
+
+*Query: `histogram_quantile(0.95, http_request_duration_seconds)` - Calculates the 95th percentile latency (~0.89-0.96 seconds)*
+
+### Average Request Duration
+
+![Average Duration](assets/screenshots/histogram-avg.png)
+
+*Query: `histogram_avg(http_request_duration_seconds)` - Shows average latency of ~0.506 seconds*
+
+### Prometheus Target Health
+
+![Target Health](assets/screenshots/prometheus-targets.png)
+
+*Prometheus successfully scraping the Go application - Status: UP*
+
 ## Project Structure
 
 ```
@@ -22,6 +50,8 @@ Native histograms are a new feature in Prometheus that provides more efficient a
 │   │   └── handlers.go
 │   └── worker/                      # Background workers
 │       └── worker.go
+├── assets/                          # Static assets
+│   └── screenshots/                 # Prometheus UI screenshots
 ├── go.mod                           # Go module dependencies
 ├── go.sum                           # Dependency checksums
 ├── prometheus.yml                   # Prometheus server configuration
@@ -76,6 +106,7 @@ docker-compose up -d
 ```
 
 This will:
+
 - Start Prometheus on port 9090
 - Enable native histogram support with the `--enable-feature=native-histograms` flag
 - Configure Prometheus to scrape metrics from your Go application every 5 seconds
@@ -93,26 +124,31 @@ http://localhost:9090
 In the Prometheus UI, try these queries:
 
 #### View the histogram:
+
 ```promql
 http_request_duration_seconds
 ```
 
 #### Calculate quantiles (e.g., 95th percentile):
+
 ```promql
 histogram_quantile(0.95, http_request_duration_seconds)
 ```
 
 #### View response size histogram:
+
 ```promql
 http_response_size_bytes
 ```
 
 #### Calculate average response time:
+
 ```promql
 histogram_avg(http_request_duration_seconds)
 ```
 
 #### View request rate:
+
 ```promql
 rate(http_requests_total[1m])
 ```
@@ -134,11 +170,13 @@ The application follows Go best practices with a clean, modular architecture:
 The application exposes two native histograms:
 
 1. **`http_request_duration_seconds`** - Tracks the duration of HTTP requests
+
    - Uses native histogram bucket factor of 1.1
    - Maximum of 100 buckets
    - Automatically generates data every second
 
 2. **`http_response_size_bytes`** - Tracks the size of HTTP responses
+
    - Uses native histogram bucket factor of 1.1
    - Maximum of 100 buckets
    - Simulates varying response sizes
@@ -237,14 +275,17 @@ docker run -p 8080:8080 prom-native-histograms
 ## Stopping the Services
 
 ### Stop the Go application:
+
 Press `Ctrl+C` in the terminal running the Go app (graceful shutdown is automatic).
 
 ### Stop Prometheus:
+
 ```bash
 docker-compose down
 ```
 
 To also remove the stored Prometheus data:
+
 ```bash
 docker-compose down -v
 ```
@@ -298,6 +339,7 @@ In `prometheus.yml`, native histogram support is enabled by:
 ### Port Already in Use
 
 If port 8080 or 9090 is already in use, you can modify:
+
 - For the Go app: Change `ServerAddress` in `internal/config/config.go`
 - For Prometheus: Change the port mapping in `docker-compose.yml`
 
@@ -308,6 +350,7 @@ If you're on Linux, change `host.docker.internal` to `172.17.0.1` (Docker bridge
 ### No Native Histogram Data
 
 Ensure:
+
 1. The Go app is running and accessible at `http://localhost:8080/metrics`
 2. Prometheus is started with `--enable-feature=native-histograms`
 3. The scrape is successful (check Targets page in Prometheus UI at http://localhost:9090/targets)
